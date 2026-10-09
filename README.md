@@ -6,6 +6,19 @@ Une seule page (`index.html`), sans étape de compilation. Three.js est chargé 
 
 L'écran reste figé dans l'orientation du départ, même quand on retourne la tablette. Le verrou natif est utilisé quand il existe (Android, en plein écran). Sinon, la page contre-tourne l'image.
 
+## Salles du prototype
+
+Les salles s'enchaînent : la sortie de l'une ouvre la suivante. Un écran de fin s'affiche après la dernière. Dans ⚙, le bouton **Salle suivante** permet de passer directement à la salle d'après.
+
+| Salle | Ce qu'on y teste | Solution |
+| --- | --- | --- |
+| Salle de test | Marche, profondeur, boules qui roulent | Atteindre l'ouverture noire à droite |
+| Scène 8 — L'évasion | Retourner la salle | Tourner lentement jusqu'au plafond, puis prendre la trappe. Retourner d'un coup est mortel |
+| Scène 9 — La ventilation | Profondeur, élan, plongeon | Contourner le puits par l'avant, puis pencher fort pour plonger sous le conduit bas |
+| Scène 10 — Le ventilateur | Agir sur un objet sans le toucher | S'abriter derrière le pilier (au fond), retourner la salle à environ 110° pour faire passer le bidon par-dessus le rebord, puis revenir : il bloque le ventilateur |
+| Scène 11 — Le toit | Doser la vitesse | Rejoindre la gouttière en marchant. En courant, on passe par-dessus et on tombe dans la rue |
+| Scène 14 — Le mur | Objet lourd qui bascule | Se tenir à l'écart, ramener le haut de la tablette vers soi pour faire tomber la tôle, puis entrer dans la cave |
+
 ## Tester sur tablette
 
 Les capteurs de mouvement ne fonctionnent qu'en **HTTPS**.

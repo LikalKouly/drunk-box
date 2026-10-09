@@ -200,19 +200,48 @@ const LO = [-W / 2, 0, -D / 2], HI = [W / 2, H, D / 2];   // mis à jour par bui
 const AX = ['x', 'y', 'z'];
 const AXV = [new V3(1, 0, 0), new V3(0, 1, 0), new V3(0, 0, 1)];
 
+function nightSky(wm, hm, seed) {
+  return canvasTex(Math.round(wm * 80), Math.round(hm * 80), (g, w, h) => {
+    const R = mulberry(seed);
+    const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#070b1f'); gr.addColorStop(0.6, '#1a2148'); gr.addColorStop(1, '#3a2f4a');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 160; i++) { g.fillStyle = `rgba(255,255,240,${0.3 + R() * 0.7})`; g.fillRect(R() * w, R() * h * 0.55, 1.6, 1.6); }
+    let x = 0;
+    while (x < w) {
+      const bw = 40 + R() * 90, bh = h * (0.12 + R() * 0.3);
+      g.fillStyle = '#0b0d1a'; g.fillRect(x, h - bh, bw, bh);
+      for (let wy = h - bh + 8; wy < h - 6; wy += 14) for (let wx = x + 6; wx < x + bw - 8; wx += 12)
+        if (R() < 0.3) { g.fillStyle = R() < 0.5 ? '#f4c86a' : '#e7a24a'; g.fillRect(wx, wy, 5, 7); }
+      x += bw + 4 + R() * 10;
+    }
+    if (seed % 2) { g.fillStyle = '#f3efd9'; g.beginPath(); g.arc(w * 0.78, h * 0.18, h * 0.06, 0, 7); g.fill(); }
+  });
+}
+function bricks(wm, hm, seed, tone) {
+  return canvasTex(Math.round(wm * 64), Math.round(hm * 64), (g, w, h) => {
+    const R = mulberry(seed), bw = 32, bh = 13;
+    g.fillStyle = '#4d3f39'; g.fillRect(0, 0, w, h);
+    for (let row = 0, y = 0; y < h; row++, y += bh)
+      for (let x = (row % 2) * -bw / 2; x < w; x += bw) { g.fillStyle = `hsl(${10 + R() * 8}, 38%, ${27 + R() * 12 + tone}%)`; g.fillRect(x + 1, y + 1, bw - 2, bh - 2); }
+    const e = Math.min(w, h) * 0.18, gr = g.createLinearGradient(0, h, 0, h - e);
+    gr.addColorStop(0, 'rgba(10,6,4,.55)'); gr.addColorStop(1, 'rgba(10,6,4,0)'); g.fillStyle = gr; g.fillRect(0, h - e, w, e);
+  });
+}
 function cardboard(wm, hm, seed, seams, tone = 0, mat = 'carton') {
-  const beton = mat === 'beton';
+  if (mat === 'nuit') return nightSky(wm, hm, seed);
+  if (mat === 'brique') return bricks(wm, hm, seed, tone);
+  const beton = mat === 'beton', metal = mat === 'metal';
   const ppm = 96, cw = Math.round(wm * ppm), ch = Math.round(hm * ppm);
   const c = document.createElement('canvas'); c.width = cw; c.height = ch;
   const g = c.getContext('2d'), R = mulberry(seed);
-  g.fillStyle = beton ? `hsl(${34 + tone}, 7%, ${47 + tone * 0.6}%)` : `hsl(${32 + tone}, 46%, ${56 + tone * 0.6}%)`; g.fillRect(0, 0, cw, ch);
+  g.fillStyle = metal ? `hsl(${208 + tone}, 10%, ${40 + tone * 0.6}%)` : beton ? `hsl(${34 + tone}, 7%, ${47 + tone * 0.6}%)` : `hsl(${32 + tone}, 46%, ${56 + tone * 0.6}%)`; g.fillRect(0, 0, cw, ch);
   for (let i = 0; i < 70; i++) {
     const x = R() * cw, y = R() * ch, r = 40 + R() * 180, light = R() < .5;
     const gr = g.createRadialGradient(x, y, 0, x, y, r);
-    gr.addColorStop(0, beton ? (light ? 'rgba(210,205,195,.14)' : 'rgba(40,36,32,.18)') : (light ? 'rgba(240,198,140,.16)' : 'rgba(115,70,30,.13)')); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    gr.addColorStop(0, (beton || metal) ? (light ? 'rgba(210,205,195,.14)' : 'rgba(40,36,32,.18)') : (light ? 'rgba(240,198,140,.16)' : 'rgba(115,70,30,.13)')); gr.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = gr; g.fillRect(x - r, y - r, 2 * r, 2 * r);
   }
-  g.globalAlpha = beton ? 0 : .045;
+  g.globalAlpha = (beton || metal) ? 0 : .045;
   for (let x = 0; x < cw; x += 7) { g.fillStyle = (x / 7) % 2 ? '#6e421c' : '#f2cc95'; g.fillRect(x, 0, 3, ch); }
   g.globalAlpha = 1;
   const id = g.getImageData(0, 0, cw, ch), d = id.data;
@@ -247,14 +276,80 @@ light.position.set(0, H - .75, 0); light.castShadow = true;
 light.shadow.mapSize.set(1024, 1024); light.shadow.bias = -0.002; light.shadow.normalBias = 0.02;
 light.shadow.camera.near = .1; light.shadow.camera.far = 25;
 scene.add(light);
-scene.add(new THREE.HemisphereLight(0xffe2bd, 0x5a3612, 1.4));
+const hemi = new THREE.HemisphereLight(0xffe2bd, 0x5a3612, 1.4); scene.add(hemi);
 
 // ── Salles du prototype (enchaînées : la sortie mène à la suivante)
+// box = obstacle fixe (min/max en mètres) ; kills = zones mortelles ; exit.zone = zone de sortie.
+const box = (x0, y0, z0, x1, y1, z1, color, extra) => ({ min: [x0, y0, z0], max: [x1, y1, z1], color, ...extra });
 const ROOMS = [
-  { name: 'Salle de test', W: 10, H: 6, D: 6, mat: 'carton', balls: true, start: [-3.5, 0.8],
-    exit: { face: 'right', z0: 0.95, z1: 2.25, h: 2.5 } },
-  { name: "Scène 8 — L'évasion", W: 7, H: 5.5, D: 4, mat: 'beton', balls: false, start: [-2, 0.4], door: true,
-    exit: { face: 'ceiling', x: 1.8, z: 0, s: 1.3 } },
+  { name: 'Salle de test', W: 10, H: 6, D: 6, mat: 'carton', start: [-3.5, 0, 0.8],
+    spheres: [
+      { n: 5, c: '#c92424', r: 0.55, m: 40, p: [2.0, 0.55, 0.2] },
+      { n: 3, c: '#d22b2b', r: 0.55, m: 40, p: [3.1, 0.55, 0.2] },
+      { n: 4, c: '#1b2f86', r: 0.55, m: 40, p: [2.55, 0.55, 1.15] },
+      { n: 2, c: '#1f5fe0', r: 0.55, m: 40, p: [2.55, 0.55 + 0.898, 0.517] }],
+    exit: { face: 'right', z0: 0.95, z1: 2.25, h: 2.5, zone: box(4.9, 0, 0.95, 5.1, 2.3, 2.25) } },
+
+  { name: "Scène 8 — L'évasion", W: 7, H: 5.5, D: 4, mat: 'beton', start: [-2, 0, 0.4], door: true,
+    exit: { face: 'ceiling', x: 1.8, z: 0, s: 1.3, zone: box(1.15, 5.4, -0.65, 2.45, 5.6, 0.65) } },
+
+  { name: 'Scène 9 — La ventilation', W: 12, H: 3.6, D: 2.4, mat: 'metal', start: [-5, 1, 0.6],
+    light: { color: 0xc9d8ff, intensity: 80 },
+    boxes: [box(-6, 0, -1.2, -2, 1, 1.2, 0x5d666f), box(-2, 0, 0.2, -1, 1, 1.2, 0x5d666f), box(-1, 0, -1.2, 6, 1, 1.2, 0x5d666f),
+            box(2, 2.0, -1.2, 3.5, 3.6, 1.2, 0x4d555d), box(-2, 0, -1.2, -1, 0.03, 0.2, 0x050505, { ghost: true })],
+    kills: [box(-2, 0, -1.2, -1, 0.6, 0.2, null, { cause: 'puits' })],
+    dive: box(0.5, 1, -1.2, 2.05, 2.9, 1.2),
+    exit: { face: 'grille', y0: 1, y1: 2.6, zone: box(5.9, 1, -1.2, 6.1, 2.6, 1.2) } },
+
+  { name: 'Scène 10 — Le ventilateur', W: 8, H: 4.5, D: 3, mat: 'metal', start: [-3, 0, -0.8],
+    light: { color: 0xd6e0ff, intensity: 100 },
+    boxes: [box(-1, 2.8, -1.5, 2.6, 3.0, 1.5, 0x6e5238), box(2.4, 3.0, -1.5, 2.6, 3.28, 1.5, 0x6e5238), box(-1, 3.0, -1.5, -0.8, 3.28, 1.5, 0x6e5238),
+            box(0.2, 0, -1.5, 0.8, 2.8, 0.3, 0x58606a)],
+    spheres: [{ kind: 'bidon', r: 0.22, m: 4, p: [-0.5, 3.22, 0] }],
+    kills: [box(3.1, 0, -1.5, 4, 2.8, 1.5, null, { cause: 'ventilateur', active: () => !room._jam })],
+    exit: { face: 'fan', zone: box(3.9, 0, -1.2, 4.1, 2.6, 1.2), active: () => room._jam },
+    reset() { room._jam = false; },
+    update(dt) {
+      if (!room._fan || room._jam) return;
+      room._fan.rotation.x += dt * 14;
+      for (const b of balls) if (!b.out && b.p.x > W / 2 - 0.95 && b.p.y < 2.8) {
+        room._jam = true; b.out = true; b.sleep = true; b.v.set(0, 0, 0); b.p.set(W / 2 - 0.35, 1.0, 0.3);
+        thud(6, 55); buzz([40, 30, 90]);
+      }
+    } },
+
+  { name: 'Scène 11 — Le toit', W: 12, H: 7, D: 6, mat: 'nuit', start: [-4.5, 3, 0], view: 'three', lamp: false, hemi: 0.7,
+    light: { color: 0xa9bbff, intensity: 130, pos: [-2, 6.3, 1.5] },
+    boxes: [box(-6, 0, -3, 3.5, 3, 3, 0x34343b), box(3.5, 2.2, -3, 4.5, 2.4, 3, 0x7d8288),
+            box(-6, 3, -3, 3.5, 3.4, -2.7, 0x4a4650), box(-2, 3, -2.4, -1.2, 4.4, -1.4, 0x7a4636),
+            box(1.6, 3, 0.8, 2.4, 4.0, 1.6, 0x7a4636), box(0.5, 3, -1.0, 0.65, 5.5, -0.85, 0x9aa0a6)],
+    kills: [box(3.5, 0, -3, 6, 1.2, 3, null, { cause: 'chute du toit' })],
+    exit: { face: 'none', zone: box(3.55, 2.4, -3, 4.5, 2.9, 3), active: () => ['idle', 'walk', 'land'].includes(char.state) && char.v.length() < 2.2 * Math.sqrt(S.scale) } },   // poser le pied sur la gouttière, sans élan
+
+  { name: 'Scène 14 — Le mur', W: 9, H: 6, D: 3.4, mat: 'brique', start: [-3.5, 0, 0.8], lamp: false,
+    light: { color: 0xffb46a, intensity: 150, pos: [-3, 5.4, 1.2] },
+    boxes: [box(-2.6, 0, 0.3, -1.6, 1.3, 1.5, 0x3f5a3a)],
+    exit: { face: 'cave', zone: box(0.9, 0, -1.8, 2.1, 2.2, -1.58), active: () => room._phi > 1.2 },
+    dynBoxes: () => room._phi < 0.35 ? [box(0.2, 0, -D / 2, 2.8, 3.2 * Math.cos(room._phi), -D / 2 + 0.27 + 3.2 * Math.max(0, Math.sin(room._phi)))] : [],
+    reset() { room._phi = -0.045; room._w = 0; if (room._plate) room._plate.rotation.x = room._phi; },
+    update(dt) {   // la tôle pivote autour de son bord bas, entraînée par la gravité
+      const L = 3.2, phi = room._phi, gn = G.dot(new V3(0, -Math.sin(phi), Math.cos(phi)));
+      if (phi <= -0.044 && room._w === 0 && gn < 1.2) return;     // calée contre le mur
+      room._w = (room._w + 1.5 / L * gn * dt) * Math.exp(-0.3 * dt);
+      let np = phi + room._w * dt;
+      if (np < -0.045) { np = -0.045; room._w = 0; }
+      const maxP = Math.PI / 2 - 0.03;
+      if (np > maxP) {
+        np = maxP;
+        if (room._w > 0.6) {
+          thud(7, 45); buzz(90);
+          const c = char;
+          if (c.state !== 'dead' && c.p.x > 0.2 && c.p.x < 2.8 && c.p.z < -D / 2 + 0.15 + L + 0.2 && c.p.y < 1.5) die('écrasé par la tôle');
+        }
+        room._w = 0;
+      }
+      room._phi = np; room._plate.rotation.x = np;
+    } },
 ];
 let level = 0, room = ROOMS[0], frontWall = null;
 
@@ -266,18 +361,30 @@ function flat(w, h, tex, pos, rot) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: .1, roughness: .8 }));
   m.position.copy(pos); m.rotation.set(rot[0], rot[1], rot[2]); m.receiveShadow = true; roomGroup.add(m); return m;
 }
+function addBox(b) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]),
+    new THREE.MeshStandardMaterial({ color: b.color ?? 0x666666, roughness: .85 }));
+  m.position.set((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+  m.castShadow = !b.ghost; m.receiveShadow = true; roomGroup.add(m); return m;
+}
 function buildRoom(i) {
   level = i; room = ROOMS[i]; W = room.W; H = room.H; D = room.D;
   LO[0] = -W / 2; LO[2] = -D / 2; HI[0] = W / 2; HI[1] = H; HI[2] = D / 2;
-  for (const ch of [...roomGroup.children]) { roomGroup.remove(ch); ch.geometry?.dispose(); ch.material?.map?.dispose(); ch.material?.dispose(); }
-  const M = room.mat, k = i * 10, beton = M === 'beton';
+  for (const ch of [...roomGroup.children]) {
+    roomGroup.remove(ch);
+    ch.traverse(o => { o.geometry?.dispose(); if (o.material) { o.material.map?.dispose(); o.material.dispose(); } });
+  }
+  const M = room.mat, k = i * 10, beton = M === 'beton', metal = M === 'metal';
   const blocks = [[0, .25, 1, .25], [0, .5, 1, .5], [0, .75, 1, .75]];
-  wall(W, H, cardboard(W, H, 11 + k, beton ? blocks : [[.37, 0, .37, 1], [.63, 0, .63, 1], [.37, .5, 1, .5], [0, .62, .37, .62]], 0, M), new V3(0, H / 2, -D / 2), [0, 0, 0]);
+  const plates = [[.25, 0, .25, 1], [.5, 0, .5, 1], [.75, 0, .75, 1]];
+  const sw = beton ? blocks : metal ? plates : null;
+  wall(W, H, cardboard(W, H, 11 + k, sw || [[.37, 0, .37, 1], [.63, 0, .63, 1], [.37, .5, 1, .5], [0, .62, .37, .62]], 0, M), new V3(0, H / 2, -D / 2), [0, 0, 0]);
   frontWall = wall(W, H, cardboard(W, H, 12 + k, [[.5, 0, .5, 1]], -2, M), new V3(0, H / 2, D / 2), [0, Math.PI, 0]);
-  wall(D, H, cardboard(D, H, 13 + k, beton ? blocks : [[0, .9, 1, .9], [.55, 0, .55, .9]], 2, M), new V3(-W / 2, H / 2, 0), [0, Math.PI / 2, 0]);
-  wall(D, H, cardboard(D, H, 14 + k, beton ? blocks : [[0, .9, 1, .9], [.3, 0, .3, .9]], 2, M), new V3(W / 2, H / 2, 0), [0, -Math.PI / 2, 0]);
-  wall(W, D, cardboard(W, D, 15 + k, [[0, .5, 1, .5]], 3, M), new V3(0, 0, 0), [-Math.PI / 2, 0, 0]);
+  wall(D, H, cardboard(D, H, 13 + k, sw || [[0, .9, 1, .9], [.55, 0, .55, .9]], 2, M), new V3(-W / 2, H / 2, 0), [0, Math.PI / 2, 0]);
+  wall(D, H, cardboard(D, H, 14 + k, sw || [[0, .9, 1, .9], [.3, 0, .3, .9]], 2, M), new V3(W / 2, H / 2, 0), [0, -Math.PI / 2, 0]);
+  wall(W, D, cardboard(W, D, 15 + k, [[0, .5, 1, .5]], 3, M === 'nuit' ? 'beton' : M), new V3(0, 0, 0), [-Math.PI / 2, 0, 0]);
   wall(W, D, cardboard(W, D, 16 + k, [[.5, 0, .5, 1], [0, .5, 1, .5]], -5, M), new V3(0, H, 0), [Math.PI / 2, 0, 0]);
+  for (const b of room.boxes || []) addBox(b);
   const E = room.exit;
   if (E.face === 'right') {
     const t = canvasTex(256, 512, g => {
@@ -302,6 +409,45 @@ function buildRoom(i) {
     });
     const m = new THREE.Mesh(new THREE.PlaneGeometry(E.s, E.s), new THREE.MeshBasicMaterial({ map: t }));
     m.position.set(E.x, H - 0.012, E.z); m.rotation.x = Math.PI / 2; roomGroup.add(m);
+  } else if (E.face === 'grille') {   // bout du conduit, grille ouverte
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(D, E.y1 - E.y0), new THREE.MeshBasicMaterial({ map: canvasTex(240, 160, (g, w, h) => {
+      g.fillStyle = '#030303'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#3c4248'; g.lineWidth = 8; g.strokeRect(4, 4, w - 8, h - 8);
+      g.lineWidth = 3; for (let x = 30; x < w; x += 30) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x - 12, 26); g.stroke(); }
+    }) }));
+    m.position.set(W / 2 - 0.012, (E.y0 + E.y1) / 2, 0); m.rotation.y = -Math.PI / 2; roomGroup.add(m);
+  } else if (E.face === 'fan') {     // ventilateur géant devant la sortie
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(1.35, 40), new THREE.MeshBasicMaterial({ color: 0x050505 }));
+    hole.position.set(W / 2 - 0.012, 1.4, 0); hole.rotation.y = -Math.PI / 2; roomGroup.add(hole);
+    const steel = new THREE.MeshStandardMaterial({ color: 0x8a9096, metalness: .6, roughness: .4 });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.37, 0.06, 8, 48), steel);
+    ring.position.set(W / 2 - 0.2, 1.4, 0); ring.rotation.y = Math.PI / 2; roomGroup.add(ring);
+    const fan = new THREE.Group(); fan.position.set(W / 2 - 0.18, 1.4, 0);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.22, 16), steel); hub.rotation.z = Math.PI / 2; fan.add(hub);
+    for (let j = 0; j < 4; j++) {
+      const arm = new THREE.Group(); arm.rotation.x = j * Math.PI / 2;
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.15, 0.36), steel); blade.position.y = 0.66; blade.rotation.y = 0.4; blade.castShadow = true;
+      arm.add(blade); fan.add(arm);
+    }
+    roomGroup.add(fan); room._fan = fan;
+  } else if (E.face === 'cave') {    // porte de cave cachée derrière une tôle
+    flat(1.2, 2.2, canvasTex(120, 220, (g, w, h) => {
+      g.fillStyle = '#070605'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#3a2a22'; g.lineWidth = 6; g.strokeRect(3, 3, w - 6, h - 6);
+    }), new V3(1.5, 1.1, -D / 2 + 0.012), [0, 0, 0]);
+    const tex = canvasTex(260, 320, (g, w, h) => {
+      for (let x = 0; x < w; x += 20) {
+        const gr = g.createLinearGradient(x, 0, x + 20, 0);
+        gr.addColorStop(0, '#6f7378'); gr.addColorStop(.5, '#b5b8bc'); gr.addColorStop(1, '#5f6267');
+        g.fillStyle = gr; g.fillRect(x, 0, 20, h);
+      }
+      const R = mulberry(5);
+      for (let j = 0; j < 40; j++) { g.fillStyle = `rgba(${120 + R() * 40},${55 + R() * 20},20,${0.15 + R() * 0.3})`; g.beginPath(); g.arc(R() * w, R() * h, 4 + R() * 22, 0, 7); g.fill(); }
+    });
+    const pivot = new THREE.Group(); pivot.position.set(1.5, 0, -D / 2 + 0.15);
+    const sheet = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.2, 0.05), new THREE.MeshStandardMaterial({ map: tex, metalness: .5, roughness: .55 }));
+    sheet.position.y = 1.6; sheet.castShadow = true; sheet.receiveShadow = true;
+    pivot.add(sheet); roomGroup.add(pivot); room._plate = pivot;
   }
   if (room.door) {   // porte de cellule avec judas, sur le mur du fond
     flat(1.1, 2.2, canvasTex(220, 440, (g, w, h) => {
@@ -312,13 +458,19 @@ function buildRoom(i) {
       g.fillStyle = '#8a8f96'; g.beginPath(); g.arc(w - 40, 240, 10, 0, 7); g.fill();
     }), new V3(-1.2, 1.1, -D / 2 + 0.012), [0, 0, 0]);
   }
-  lamp.children[0].position.y = H - .25; bulb.position.y = H - .56; light.position.y = H - .75;
-  setView(S.view);
+  lamp.visible = room.lamp !== false;
+  lamp.children[0].position.y = H - .25; bulb.position.y = H - .56;
+  const Lc = room.light || {};
+  light.color.setHex(Lc.color ?? 0xffc98c); light.intensity = Lc.intensity ?? 160;
+  if (Lc.pos) light.position.fromArray(Lc.pos); else light.position.set(0, H - .75, 0);
+  light.shadow.camera.far = 40;
+  hemi.intensity = room.hemi ?? 1.4; hemi.color.setHex(M === 'nuit' ? 0x8796c8 : 0xffe2bd);
+  makeBalls(room.spheres || []);
+  setView(room.view || S.view);
+  Ccal.setFromUnitVectors(neutralRaw, view.dS);   // même neutre, nouvel angle de vue
 }
 
-
-// ───────────────────────── Boules ─────────────────────────
-const RB = 0.55, MB = 40;
+// ───────────────────────── Objets roulants (boules, bidon) ─────────────────────────
 function ballTex(n, col) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 256; const g = c.getContext('2d');
   g.fillStyle = col; g.fillRect(0, 0, 512, 256);
@@ -328,18 +480,25 @@ function ballTex(n, col) {
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
-const BALL_START = [
-  { n: 5, c: '#c92424', p: [2.0, RB, 0.2] },
-  { n: 3, c: '#d22b2b', p: [3.1, RB, 0.2] },
-  { n: 4, c: '#1b2f86', p: [2.55, RB, 1.15] },
-  { n: 2, c: '#1f5fe0', p: [2.55, RB + 0.898, 0.517] },
-];
-const balls = BALL_START.map(def => {
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(RB, 40, 28),
-    new THREE.MeshPhysicalMaterial({ map: ballTex(def.n, def.c), roughness: .32, clearcoat: 1, clearcoatRoughness: .08 }));
-  mesh.castShadow = true; mesh.receiveShadow = true; scene.add(mesh);
-  return { def, mesh, p: new V3(), v: new V3(), sleep: true, sleepRef: new V3(0, -1, 0), still: 0, contactN: null, snd: 0 };
-});
+let balls = [];
+function makeBalls(defs) {
+  for (const b of balls) { scene.remove(b.mesh); b.mesh.traverse(o => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose(); }); }
+  balls = defs.map(def => {
+    let mesh;
+    if (def.kind === 'bidon') {
+      mesh = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(def.r * 0.92, def.r * 0.92, def.r * 2.1, 20),
+        new THREE.MeshStandardMaterial({ color: 0xb33a1f, roughness: .45, metalness: .45 }));
+      body.rotation.x = Math.PI / 2; body.castShadow = true; mesh.add(body);
+    } else {
+      mesh = new THREE.Mesh(new THREE.SphereGeometry(def.r, 40, 28),
+        new THREE.MeshPhysicalMaterial({ map: ballTex(def.n, def.c), roughness: .32, clearcoat: 1, clearcoatRoughness: .08 }));
+      mesh.castShadow = true; mesh.receiveShadow = true;
+    }
+    scene.add(mesh);
+    return { def, r: def.r, m: def.m, mesh, p: new V3(), v: new V3(), sleep: true, sleepRef: new V3(0, -1, 0), still: 0, contactN: null, snd: 0, out: false };
+  });
+}
 
 // ───────────────────────── Personnage 3D (modèle articulé, rendu illustré) ─────────────────────────
 const toonGrad = (() => { const t = new THREE.DataTexture(new Uint8Array([90, 165, 255]), 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
@@ -435,6 +594,7 @@ const gScreen = new V3(0, -1, 0);     // gravité calibrée, repère écran
 const G = new V3(0, -9.8, 0);         // gravité de la salle (m/s²)
 const Gdir = new V3(0, -1, 0);
 let Ccal = new THREE.Quaternion();
+const neutralRaw = new V3(0, -1, 0);   // position neutre de l'appareil, gardée d'une salle à l'autre
 let haveSensor = false, lastMotionT = 0, invVotes = 0, autoInv = false;
 let vRoll = 0, vPitch = 0;
 const keys = {};
@@ -469,7 +629,8 @@ function virtualRaw() {
   return new V3(Math.sin(r), -Math.cos(r) * Math.cos(p), -Math.cos(r) * Math.sin(p)).normalize();
 }
 function calibrate() {
-  Ccal.setFromUnitVectors(raw.clone().normalize(), view.dS);
+  neutralRaw.copy(raw).normalize();
+  Ccal.setFromUnitVectors(neutralRaw, view.dS);
   toast('Position neutre enregistrée');
 }
 
@@ -561,24 +722,28 @@ function thud(strength, freq = 90) {
 
 // ───────────────────────── Physique ─────────────────────────
 let simT = 0;
-function charDims() { const s = S.scale, hh = 0.875 * s, r = 0.35 * s; return { s, hh, r, L: hh - r }; }
+function charDims() { const s = S.scale, r = 0.35 * s, hh = char.dive > 0 ? r : 0.875 * s; return { s, hh, r, L: hh - r }; }
 
 function resetRoom() {
+  room.reset?.();
+  char.dive = 0;
   const { hh } = charDims();
-  char.p.set(room.start[0], hh - 0.001, room.start[1]); char.v.set(0, 0, 0); char.up.set(0, 1, 0); char.upTarget.set(0, 1, 0);
+  char.p.set(room.start[0], room.start[1] + hh - 0.001, room.start[2]); char.v.set(0, 0, 0); char.up.set(0, 1, 0); char.upTarget.set(0, 1, 0);
   char.state = 'idle'; char.timer = 0; char.tumble = 0; char.contacts = []; char.deadT = 0;
-  for (const b of balls) { b.out = !room.balls; b.mesh.visible = room.balls; b.p.fromArray(b.def.p); b.v.set(0, 0, 0); b.sleep = true; b.sleepRef.set(0, -1, 0); b.still = 0; b.mesh.quaternion.identity(); b.mesh.rotation.set(0.3, 1.1 * b.def.n, 0.2); }
+  for (const b of balls) {
+    b.out = false; b.mesh.visible = true; b.p.fromArray(b.def.p); b.v.set(0, 0, 0); b.sleep = true; b.sleepRef.set(0, -1, 0); b.still = 0;
+    b.mesh.quaternion.identity(); if (b.def.n) b.mesh.rotation.set(0.3, 1.1 * b.def.n, 0.2);
+  }
   charGroup.scale.setScalar(S.scale); char.fwd.set(1, 0, 0); char.fwdVis.set(1, 0, 0);
   frontWall.visible = S.front === 'mur';
 }
 
 function showEnd() {
-  running = false; c_resetForEnd();
+  running = false; char.state = 'idle'; char.deadT = 0;
   document.getElementById('endText').textContent =
     `Vous avez terminé les ${ROOMS.length} salles de ce prototype (${ROOMS.map(r => r.name).join(', ')}). Les autres scènes viendront ensuite.`;
   document.getElementById('end').hidden = false;
 }
-function c_resetForEnd() { char.state = 'idle'; char.deadT = 0; }
 
 function goRoom(i) {
   buildRoom(((i % ROOMS.length) + ROOMS.length) % ROOMS.length); resetRoom();
@@ -590,14 +755,63 @@ function die(cause) {
   char.state = 'dead'; char.deadT = 1.3; char.cause = cause;
 }
 
+// ── obstacles fixes (boîtes alignées sur les axes)
+function sphereBox(q, r, b) {
+  const cx = clamp(q.x, b.min[0], b.max[0]), cy = clamp(q.y, b.min[1], b.max[1]), cz = clamp(q.z, b.min[2], b.max[2]);
+  const dx = q.x - cx, dy = q.y - cy, dz = q.z - cz, d2 = dx * dx + dy * dy + dz * dz;
+  if (d2 > 1e-12) { if (d2 >= r * r) return null; const d = Math.sqrt(d2); return { n: new V3(dx / d, dy / d, dz / d), pen: r - d }; }
+  let best = null;   // centre à l'intérieur : on ressort par la face la plus proche
+  for (let i = 0; i < 3; i++) {
+    const k = AX[i], lo = q[k] - b.min[i], hi = b.max[i] - q[k];
+    if (!best || lo < best.pen) best = { n: AXV[i].clone().negate(), pen: lo };
+    if (hi < best.pen) best = { n: AXV[i].clone(), pen: hi };
+  }
+  best.pen += r; return best;
+}
+const solidBoxes = () => (room.boxes || []).filter(b => !b.ghost).concat(room.dynBoxes ? room.dynBoxes() : []);
+function charTouches(b) {
+  const c = char, { r, L } = charDims();
+  for (let i = 0; i <= 4; i++) if (sphereBox(c.p.clone().addScaledVector(c.up, -L + 2 * L * i / 4), r, b)) return true;
+  return false;
+}
+function charBoxes() {
+  const c = char, { r, L } = charDims();
+  for (const b of solidBoxes()) for (let i = 0; i <= 4; i++) {
+    const h = sphereBox(c.p.clone().addScaledVector(c.up, -L + 2 * L * i / 4), r, b);
+    if (!h) continue;
+    c.p.addScaledVector(h.n, h.pen); c.contacts.push(h.n);
+    const vn = c.v.dot(h.n);
+    if (vn < 0) { c.v.addScaledVector(h.n, -vn); onCharImpact(-vn, h.n); }
+  }
+}
+
 function stepChar(dt) {
-  const c = char, { s, hh } = charDims(), g = G, gdir = Gdir;
+  const c = char, { s } = charDims(), g = G, gdir = Gdir;
   if (c.state === 'win') { c.v.set(0, 0, 0); return; }
   if (c.state === 'dead') { c.v.addScaledVector(g, dt).multiplyScalar(0.995); c.p.addScaledVector(c.v, dt); return; }
   let N = null, best = -2;
   for (const n of c.contacts) { const d = -n.dot(gdir); if (d > best) { best = d; N = n; } }
   const theta = N ? Math.acos(clamp(best, -1, 1)) : Math.PI;
   c.theta = theta;
+  if (c.dive > 0) {   // plongeon à plat ventre : il glisse sur son élan
+    c.state = 'dive';
+    if (N && best > 0.5) {
+      const gn = g.dot(N), vn = N.clone().multiplyScalar(c.v.dot(N));
+      const vt = c.v.clone().sub(vn).multiplyScalar(Math.exp(-0.35 * dt)).addScaledVector(g.clone().addScaledVector(N, -gn), 0.5 * dt);
+      c.v.copy(vt).add(vn).addScaledVector(N, gn * dt); c.upTarget.copy(N);
+    } else c.v.addScaledVector(g, dt);
+    c.dive -= dt;
+    if (c.dive <= 0) {   // il se relève seulement s'il a la place
+      const full = 0.875 * s, r = 0.35 * s, Lf = full - r, center = c.p.clone().addScaledVector(c.up, Lf);
+      let blocked = false;
+      for (const b of solidBoxes()) for (let i = 0; i <= 4 && !blocked; i++)
+        if (sphereBox(center.clone().addScaledVector(c.up, -Lf + 2 * Lf * i / 4), r * 0.95, b)) blocked = true;
+      if (blocked) c.dive = 0.15; else { c.dive = 0; c.p.copy(center); c.state = 'land'; c.timer = 0.35; }
+    }
+    c.up.lerp(c.upTarget, 1 - Math.exp(-dt * 8)).normalize();
+    c.p.addScaledVector(c.v, dt);
+    return;
+  }
   if (N && theta < S.fall * DEG) {
     c.upTarget.copy(N);
     const gn = g.dot(N);
@@ -620,9 +834,8 @@ function stepChar(dt) {
       const target = Math.max(S.walk * 1.2, S.run * (0.45 + 0.55 * k)) * s;
       if (c.state !== 'carried' || !c.runSp) c.runSp = Math.max(vt.length(), S.walk * s);
       c.runSp = Math.min(target, c.runSp + gt.length() * 0.5 * dt);
-      const sp = c.runSp;
       const dir = gt.clone().normalize().applyAxisAngle(N, 0.18 * S.drunk * Math.sin(simT * 2.3));
-      desired.copy(dir).multiplyScalar(sp);
+      desired.copy(dir).multiplyScalar(c.runSp);
       c.state = 'carried';
     }
     if (c.state !== 'carried') c.runSp = 0;
@@ -669,22 +882,32 @@ function charBall(b) {
   const a = c.p.clone().addScaledVector(c.up, -L), seg = c.up.clone().multiplyScalar(2 * L);
   const t = clamp(b.p.clone().sub(a).dot(seg) / Math.max(1e-6, seg.lengthSq()), 0, 1);
   const q = a.addScaledVector(seg, t);
-  const d = b.p.clone().sub(q), dist = d.length(), min = r + RB;
+  const d = b.p.clone().sub(q), dist = d.length(), min = r + b.r;
   if (dist >= min || dist < 1e-6) return;
   const n = d.divideScalar(dist);
   b.sleep = false; b.still = 0;
   const mc = 75 * s * s * s, pen = min - dist;
-  c.p.addScaledVector(n, -pen * MB / (mc + MB));
-  b.p.addScaledVector(n, pen * mc / (mc + MB));
+  c.p.addScaledVector(n, -pen * b.m / (mc + b.m));
+  b.p.addScaledVector(n, pen * mc / (mc + b.m));
   c.contacts.push(n.clone().negate());
   const vrel = b.v.clone().sub(c.v).dot(n);
   if (vrel < 0) {
-    if (-vrel > S.crush * Math.sqrt(s) && b.v.length() > c.v.length() && c.state !== 'dead') { thud(-vrel, 70); die('boule'); }
-    const j = -(1 + 0.1) * vrel / (1 / mc + 1 / MB);
-    c.v.addScaledVector(n, -j / mc); b.v.addScaledVector(n, j / MB);
+    if (-vrel > S.crush * Math.sqrt(s) && b.m > 10 && b.v.length() > c.v.length() && c.state !== 'dead') { thud(-vrel, 70); die('boule'); }
+    const j = -(1 + 0.1) * vrel / (1 / mc + 1 / b.m);
+    c.v.addScaledVector(n, -j / mc); b.v.addScaledVector(n, j / b.m);
   }
 }
 
+function ballContact(b, n, pen) {
+  b.p.addScaledVector(n, pen);
+  const vn = b.v.dot(n);
+  if (vn < 0) {
+    const imp = -vn;
+    b.v.addScaledVector(n, -vn * (1 + (imp > 0.8 ? 0.35 : 0)));
+    if (imp > 1.2 && simT - b.snd > .08) { b.snd = simT; thud(imp * Math.min(1, b.m / 20), 85); }
+  }
+  if (!b.contactN || -n.dot(Gdir) > -b.contactN.dot(Gdir)) b.contactN = n;
+}
 function ballWalls(b, dt) {
   b.contactN = null;
   for (let i = 0; i < 3; i++) {
@@ -692,19 +915,11 @@ function ballWalls(b, dt) {
     for (const side of [-1, 1]) {
       const lim = side < 0 ? LO[i] : HI[i];
       if (i === 2 && side > 0 && S.front === 'vide') continue;
-      if (side < 0 ? b.p[k] - RB < lim : b.p[k] + RB > lim) {
-        b.p[k] = lim - side * RB;
-        const n = AXV[i].clone().multiplyScalar(-side);
-        const vn = b.v.dot(n);
-        if (vn < 0) {
-          const imp = -vn;
-          b.v.addScaledVector(n, -vn * (1 + (imp > 0.8 ? 0.35 : 0)));
-          if (imp > 1.2 && simT - b.snd > .08) { b.snd = simT; thud(imp, 85); }
-        }
-        if (!b.contactN || -n.dot(Gdir) > -b.contactN.dot(Gdir)) b.contactN = n;
-      }
+      if (side < 0 ? b.p[k] - b.r < lim : b.p[k] + b.r > lim)
+        ballContact(b, AXV[i].clone().multiplyScalar(-side), side < 0 ? lim - (b.p[k] - b.r) : (b.p[k] + b.r) - lim);
     }
   }
+  for (const bx of solidBoxes()) { const h = sphereBox(b.p, b.r, bx); if (h) ballContact(b, h.n, h.pen); }
   if (b.contactN) {
     const n = b.contactN, vt = b.v.clone().addScaledVector(n, -b.v.dot(n));
     const k = vt.length() < 0.15 ? 3 : 0.45;
@@ -713,21 +928,31 @@ function ballWalls(b, dt) {
 }
 
 function ballBall(a, b) {
-  if (a.sleep && b.sleep) return;
-  const d = b.p.clone().sub(a.p), dist = d.length();
-  if (dist >= 2 * RB || dist < 1e-6) return;
+  if (a.out || b.out || (a.sleep && b.sleep)) return;
+  const d = b.p.clone().sub(a.p), dist = d.length(), min = a.r + b.r;
+  if (dist >= min || dist < 1e-6) return;
   a.sleep = b.sleep = false;
-  const n = d.divideScalar(dist), pen = 2 * RB - dist;
-  a.p.addScaledVector(n, -pen / 2); b.p.addScaledVector(n, pen / 2);
+  const n = d.divideScalar(dist), pen = min - dist, wa = b.m / (a.m + b.m), wb = a.m / (a.m + b.m);
+  a.p.addScaledVector(n, -pen * wa); b.p.addScaledVector(n, pen * wb);
   const vrel = b.v.clone().sub(a.v).dot(n);
   if (vrel < 0) {
-    const j = -(1 + 0.3) * vrel / 2;
-    a.v.addScaledVector(n, -j); b.v.addScaledVector(n, j);
+    const j = -(1 + 0.3) * vrel / (1 / a.m + 1 / b.m);
+    a.v.addScaledVector(n, -j / a.m); b.v.addScaledVector(n, j / b.m);
     if (-vrel > 1.2 && simT - a.snd > .08) { a.snd = simT; thud(-vrel * .8, 160); }
   }
 }
 
+function checkZones() {
+  const c = char;
+  if (c.state === 'dead' || c.state === 'win') return;
+  for (const k of room.kills || []) if ((!k.active || k.active()) && charTouches(k)) { thud(4, 60); buzz([60, 40, 120]); die(k.cause); return; }
+  const E = room.exit;
+  if ((!E.active || E.active()) && charTouches(E.zone)) { c.state = 'win'; c.deadT = 2.0; showFade('Salle terminée'); thud(3, 220); return; }
+  if (room.dive && c.state === 'carried' && c.v.length() > 2.0 * Math.sqrt(S.scale) && charTouches(room.dive)) { c.dive = 1.0; c.state = 'dive'; thud(2, 140); }
+}
+
 function step(dt) {
+  room.update?.(dt);
   stepChar(dt);
   for (const b of balls) {
     if (b.out) continue;
@@ -737,32 +962,24 @@ function step(dt) {
   }
   for (let i = 0; i < balls.length; i++) for (let j = i + 1; j < balls.length; j++) ballBall(balls[i], balls[j]);
   char.contacts = [];
-  for (const b of balls) charBall(b);
-  for (const b of balls) if (!b.sleep) ballWalls(b, dt);
+  for (const b of balls) if (!b.out) charBall(b);
+  for (const b of balls) if (!b.sleep && !b.out) ballWalls(b, dt);
   charWalls();
+  charBoxes();
   for (const b of balls) {
-    if (b.sleep) continue;
+    if (b.sleep || b.out) continue;
     if (b.contactN) {
-      const w = new V3().crossVectors(b.contactN, b.v).divideScalar(RB), wl = w.length();
+      const w = new V3().crossVectors(b.contactN, b.v).divideScalar(b.r), wl = w.length();
       if (wl > 1e-4) b.mesh.quaternion.premultiply(_q.setFromAxisAngle(w.divideScalar(wl), wl * dt));
     }
     if (b.contactN && b.v.length() < 0.06) { b.still += dt; if (b.still > 0.8) { b.sleep = true; b.v.set(0, 0, 0); b.sleepRef.copy(Gdir); } }
     else b.still = 0;
   }
   for (const b of balls) if (!b.out && b.p.z > D / 2 + 4) { b.out = true; b.sleep = true; b.mesh.visible = false; }
-  // sortie
   const c = char;
   if (c.state !== 'dead' && c.state !== 'win' && c.p.z > D / 2 + 0.6) die('tombé dehors');
-  if (c.state !== 'dead' && c.state !== 'win') {
-    const { r, L } = charDims(), ext = L * Math.abs(c.up.x) + r, exY = L * Math.abs(c.up.y) + r, E = room.exit;
-    const out = E.face === 'right'
-      ? c.p.x + ext >= W / 2 - 0.03 && c.p.z > E.z0 && c.p.z < E.z1 && c.p.y - exY < E.h - 0.3
-      : c.p.y + exY >= H - 0.03 && Math.abs(c.p.x - E.x) < E.s / 2 && Math.abs(c.p.z - E.z) < E.s / 2;
-    if (out) {
-      c.state = 'win'; c.deadT = 2.0; showFade('Salle terminée'); thud(3, 220);
-    }
-  }
-  // mort / victoire : fondu puis redémarrage
+  checkZones();
+  // mort / victoire : fondu puis redémarrage ou salle suivante
   if (c.state === 'dead' || c.state === 'win') {
     c.deadT -= dt;
     if (c.state === 'dead' && c.deadT < 0.45 && fadeEl.style.opacity !== '1') showFade('');
@@ -796,6 +1013,7 @@ function updateVisuals(dt, t) {
     case 'fall': tgt.spread = 0.7; tgt.armsUp = 0.6; tgt.mouth = 1; break;
     case 'land': tgt.crouch = clamp(c.timer / 0.5, 0, 1); break;
     case 'dead': tgt.spread = 0.25; tgt.mouth = 1; break;
+    case 'dive': tgt.armsUp = 1; tgt.mouth = 1; break;
   }
   const k = 1 - Math.exp(-dt * 10);
   for (const key in tgt) pose[key] += (tgt[key] - pose[key]) * k;
@@ -814,10 +1032,11 @@ function updateVisuals(dt, t) {
   _m.makeBasis(_su, c.up, _sr); charGroup.quaternion.setFromRotationMatrix(_m);
   if (c.state === 'fall') c.tumble += dt * 3.2 * (c.tumbleDir || 1);
   else if (c.state === 'dead') c.tumble += (-Math.PI / 2 - c.tumble) * (1 - Math.exp(-dt * 12));
+  else if (c.state === 'dive') c.tumble += (Math.PI / 2 - c.tumble) * (1 - Math.exp(-dt * 14));
   else c.tumble *= Math.exp(-dt * 10);
   charRoot.rotation.x = c.tumble;
   charRoot.rotation.z = 0.05 * dr * Math.sin(t * 1.7) * (c.state === 'idle' || c.state === 'walk' ? 1 : 0);
-  charRoot.position.y = c.state === 'dead' ? 0.17 : 0;
+  charRoot.position.y = (c.state === 'dead' || c.state === 'dive') ? 0.17 : 0;
 }
 
 // grain
@@ -865,7 +1084,7 @@ buildRoom(0);
 resetRoom();
 gScreen.copy(view.dS);
 requestAnimationFrame(frame);
-window.__proto = { char, balls, G, get S() { return S; }, setTilt(r, p) { vRoll = r; vPitch = p; },
+window.__proto = { char, get balls() { return balls; }, get room() { return room; }, goRoom, G, get S() { return S; }, setTilt(r, p) { vRoll = r; vPitch = p; },
   sim(sec) { const h = 1 / 120; for (let i = 0; i < sec * 120; i++) { updateInput(h); step(h); } updateCamera(1); updateVisuals(1 / 60, simT); renderer.render(scene, camera); } };
 
 document.getElementById('go').addEventListener('click', async () => {
