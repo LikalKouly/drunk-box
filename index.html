@@ -72,6 +72,7 @@
     <h1>DRUNK BOX</h1>
     <p>Prototype de contrôle. Tenez la tablette comme vous aimez jouer : cette position deviendra la position neutre. Penchez pour faire marcher le personnage, retournez pour changer la gravité.</p>
     <button id="go" class="btn">Commencer</button>
+    <small>L'écran reste figé même si vous retournez la tablette. Pour plus de confort, activez aussi le verrouillage de la rotation de l'appareil.</small>
     <small id="startNote">Sur PC : flèches ou glisser la souris pour incliner, Espace pour revenir au neutre.</small>
   </div>
 </div>
@@ -168,8 +169,20 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 300);
-function onResize() { renderer.setSize(innerWidth, innerHeight, false); }
-addEventListener('resize', onResize); onResize();
+// L'écran ne doit jamais tourner : on fige l'orientation du départ. Si le navigateur fait
+// pivoter la page quand on retourne la tablette, on contre-tourne le canvas.
+let angle0 = null, gameW = innerWidth, gameH = innerHeight;
+function screenAngle() { return (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0); }
+function onResize() {
+  if (angle0 === null) angle0 = screenAngle();
+  const delta = ((screenAngle() - angle0) % 360 + 360) % 360;
+  const swap = delta === 90 || delta === 270;
+  gameW = swap ? innerHeight : innerWidth; gameH = swap ? innerWidth : innerHeight;
+  renderer.setSize(gameW, gameH, false);
+  Object.assign(canvas.style, { width: gameW + 'px', height: gameH + 'px', left: (innerWidth - gameW) / 2 + 'px', top: (innerHeight - gameH) / 2 + 'px',
+    right: 'auto', bottom: 'auto', transform: delta ? `rotate(${-delta}deg)` : 'none' });
+}
+addEventListener('resize', onResize); screen.orientation?.addEventListener?.('change', () => setTimeout(onResize, 50)); addEventListener('orientationchange', () => setTimeout(onResize, 50)); onResize();
 
 function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
@@ -275,95 +288,87 @@ const balls = BALL_START.map(def => {
   return { def, mesh, p: new V3(), v: new V3(), sleep: true, sleepRef: new V3(0, -1, 0), still: 0, contactN: null, snd: 0 };
 });
 
-// ───────────────────────── Personnage (illustration 2D dessinée en direct) ─────────────────────────
-const CW = 256, CH = 512;
-const manCanvas = document.createElement('canvas'); manCanvas.width = CW; manCanvas.height = CH;
-const mctx = manCanvas.getContext('2d');
-const manTex = new THREE.CanvasTexture(manCanvas); manTex.colorSpace = THREE.SRGBColorSpace;
-const charGroup = new THREE.Group(); scene.add(charGroup);
-const manMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 2).translate(0, 1, 0),
-  new THREE.MeshBasicMaterial({ map: manTex, alphaTest: .5, side: THREE.DoubleSide, color: 0xeadbc8 }));
-manMesh.castShadow = true; charGroup.add(manMesh);
+// ───────────────────────── Personnage 3D (modèle articulé, rendu illustré) ─────────────────────────
+const toonGrad = (() => { const t = new THREE.DataTexture(new Uint8Array([90, 165, 255]), 3, 1, THREE.RedFormat); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x1c1009, side: THREE.BackSide });
+const toon = c => new THREE.MeshToonMaterial({ color: c, gradientMap: toonGrad });
+const MAT = { shirt: toon(0x2c52b8), pants: toon(0x232b4f), skin: toon(0xe9b38c), hair: toon(0x6b625a), shoe: toon(0x1a1512),
+  bottle: toon(0x2f7a2c), belt: toon(0x2a1b12), nose: toon(0xd9675a), eye: new THREE.MeshBasicMaterial({ color: 0x1a1210 }) };
+function inflate(geo, w) {
+  const g = geo.clone(), p = g.attributes.position, n = g.attributes.normal;
+  for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i) + n.getX(i) * w, p.getY(i) + n.getY(i) * w, p.getZ(i) + n.getZ(i) * w);
+  return g;
+}
+function part(geo, mat, parent, pos = [0, 0, 0], scl = null, outline = 0.014) {
+  const m = new THREE.Mesh(geo, mat); m.position.fromArray(pos); if (scl) m.scale.fromArray(scl);
+  m.castShadow = true; parent.add(m);
+  if (outline) m.add(new THREE.Mesh(inflate(geo, outline), OUTLINE));
+  return m;
+}
+const joint = (parent, pos) => { const g = new THREE.Group(); g.position.fromArray(pos); parent.add(g); return g; };
+const cap = (r, l) => new THREE.CapsuleGeometry(r, l, 6, 12);
 
-const COL = { out: '#22150c', shirt: '#2a4fb3', shirtD: '#1d3884', pants: '#1f2747', pantsD: '#151a33', skin: '#e9b58f', skinD: '#c98f6d', hair: '#6f675f', shoe: '#14100d', bottle: '#2f6b2a', belt: '#2a1b12' };
-function drawMan(g, P) {
-  g.clearRect(0, 0, CW, CH);
-  g.lineCap = 'round'; g.lineJoin = 'round';
-  const ph = P.phase, sw = P.walkAmt, L = P.lean;
-  const thigh = 118, shin = 112;
-  const hip = { x: 128, y: 0 };
-  const legAng = s => (s ? 1 : -1) * (Math.sin(ph) * 0.5 * sw + P.spread * 0.45) + P.legsFwd + P.crouch * 0.9;
-  const knee = s => Math.max(0, Math.sin(ph + (s ? 0 : Math.PI) + 1.4)) * 0.85 * sw + P.crouch * 1.5 + P.legsFwd * 0.3;
-  const leg = s => { const a = legAng(s), k = knee(s);
-    const kn = { x: hip.x + thigh * Math.sin(a), y: hip.y + thigh * Math.cos(a) };
-    const b = a - k; return { kn, ft: { x: kn.x + shin * Math.sin(b), y: kn.y + shin * Math.cos(b) } }; };
-  let A = leg(true), B = leg(false);
-  hip.y = 496 - Math.max(A.ft.y, B.ft.y);
-  A = leg(true); B = leg(false);
-  const limb = (pts, w, col) => {
-    for (const [lw, c] of [[w + 7, COL.out], [w, col]]) {
-      g.strokeStyle = c; g.lineWidth = lw; g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p.x, p.y) : g.moveTo(p.x, p.y)); g.stroke();
+const charGroup = new THREE.Group(); scene.add(charGroup);     // placé aux pieds, orienté (haut = normale du sol)
+const charRoot = new THREE.Group(); charGroup.add(charRoot);    // culbutes, mort
+const man = {};
+{
+  const hips = man.hips = joint(charRoot, [0, 0.92, 0]);
+  part(cap(0.14, 0.12), MAT.pants, hips, [0, 0.02, 0], [1, 1, 0.8]).rotation.z = Math.PI / 2;
+  man.legs = [1, -1].map(sd => {
+    const hip = joint(hips, [sd * 0.09, 0, 0]);
+    part(cap(0.07, 0.3), MAT.pants, hip, [0, -0.22, 0]);
+    const knee = joint(hip, [0, -0.44, 0]);
+    part(cap(0.062, 0.3), MAT.pants, knee, [0, -0.21, 0]);
+    part(new THREE.SphereGeometry(0.075, 12, 8), MAT.shoe, knee, [0, -0.43, 0.06], [1, 0.62, 1.75]);
+    return { hip, knee, sd };
+  });
+  const torso = man.torso = joint(hips, [0, 0.05, 0]);
+  part(cap(0.165, 0.27), MAT.shirt, torso, [0, 0.27, 0], [1.12, 1, 0.78]);
+  part(new THREE.CylinderGeometry(0.168, 0.168, 0.05, 16), MAT.belt, torso, [0, 0.05, 0], [1.12, 1, 0.8], 0);
+  const head = man.head = joint(torso, [0, 0.58, 0]);
+  part(new THREE.CylinderGeometry(0.05, 0.055, 0.12, 10), MAT.skin, head, [0, 0.03, 0], null, 0);
+  part(new THREE.SphereGeometry(0.12, 18, 14), MAT.skin, head, [0, 0.17, 0.01], [0.95, 1.08, 1]);
+  part(new THREE.SphereGeometry(0.126, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), MAT.hair, head, [0, 0.19, -0.005], [0.97, 1, 1.02], 0);
+  part(new THREE.SphereGeometry(0.032, 10, 8), MAT.nose, head, [0, 0.16, 0.125], [1, 0.9, 1.2], 0);
+  for (const sd of [1, -1]) part(new THREE.SphereGeometry(0.016, 8, 6), MAT.eye, head, [sd * 0.045, 0.2, 0.108], [1, 0.6, 1], 0);
+  man.arms = [1, -1].map(sd => {
+    const sh = joint(torso, [sd * 0.22, 0.47, 0]);
+    part(cap(0.056, 0.2), MAT.shirt, sh, [0, -0.155, 0]);
+    const el = joint(sh, [0, -0.31, 0]);
+    part(cap(0.05, 0.17), MAT.shirt, el, [0, -0.13, 0]);
+    part(new THREE.SphereGeometry(0.055, 10, 8), MAT.skin, el, [0, -0.29, 0.01]);
+    if (sd < 0) {   // la bouteille, main droite
+      const b = joint(el, [0, -0.31, 0.04]); b.rotation.x = 0.5;
+      part(new THREE.CylinderGeometry(0.036, 0.036, 0.2, 12), MAT.bottle, b, [0, -0.04, 0], null, 0.01);
+      part(new THREE.CylinderGeometry(0.014, 0.022, 0.08, 10), MAT.bottle, b, [0, -0.18, 0], null, 0.008);
     }
-  };
-  const shoe = (f, col) => { g.fillStyle = COL.out; g.beginPath(); g.ellipse(f.x + 10, f.y - 2, 26, 13, 0, 0, Math.PI * 2); g.fill();
-    g.fillStyle = col; g.beginPath(); g.ellipse(f.x + 10, f.y - 3, 22, 9, 0, 0, Math.PI * 2); g.fill(); };
-  const sh = { x: hip.x + 138 * Math.sin(L), y: hip.y - 138 * Math.cos(L) };
-  const armPts = s => {
-    const sg = s ? 1 : -1;
-    const a = -sg * Math.sin(ph) * 0.55 * sw + P.armsUp * -2.4 * (s ? 1 : 0.8) + sg * P.spread * 0.7 + 0.12 + L * 0.5;
-    const bend = 0.35 + 0.3 * sw + P.armsUp * 0.2;
-    const el = { x: sh.x + 82 * Math.sin(a), y: sh.y + 82 * Math.cos(a) };
-    const hd = { x: el.x + 78 * Math.sin(a + bend), y: el.y + 78 * Math.cos(a + bend) };
-    return { el, hd, dir: a + bend };
-  };
-  // bras arrière + bouteille
-  const BA = armPts(false);
-  limb([sh, BA.el, BA.hd], 24, COL.shirtD);
-  g.save(); g.translate(BA.hd.x, BA.hd.y); g.rotate(-BA.dir);
-  g.fillStyle = COL.out; g.fillRect(-12, -8, 24, 66); g.fillRect(-6, 54, 12, 26);
-  g.fillStyle = COL.bottle; g.fillRect(-9, -5, 18, 60); g.fillRect(-4, 54, 8, 23);
-  g.fillStyle = 'rgba(255,255,255,.35)'; g.fillRect(-5, 2, 4, 40);
-  g.restore();
-  g.fillStyle = COL.out; g.beginPath(); g.arc(BA.hd.x, BA.hd.y, 14, 0, 7); g.fill(); g.fillStyle = COL.skinD; g.beginPath(); g.arc(BA.hd.x, BA.hd.y, 10, 0, 7); g.fill();
-  // jambes
-  limb([hip, B.kn, B.ft], 32, COL.pantsD); shoe(B.ft, '#0e0b09');
-  limb([hip, A.kn, A.ft], 32, COL.pants); shoe(A.ft, COL.shoe);
-  // bassin + torse
-  const tdx = Math.sin(L), tdy = -Math.cos(L);
-  limb([{ x: hip.x - tdx * 4, y: hip.y - tdy * 4 }, { x: hip.x + tdx * 14, y: hip.y + tdy * 14 }], 50, COL.pants);
-  limb([{ x: hip.x + tdx * 26, y: hip.y + tdy * 26 }, sh], 60, COL.shirt);
-  const bm = { x: hip.x + tdx * 18, y: hip.y + tdy * 18 };
-  g.strokeStyle = COL.belt; g.lineWidth = 10; g.beginPath(); g.moveTo(bm.x - tdy * 32, bm.y + tdx * 32); g.lineTo(bm.x + tdy * 32, bm.y - tdx * 32); g.stroke();
-  // chemise : boutons
-  g.fillStyle = '#c9d4f2';
-  for (let i = 1; i <= 3; i++) { const t = 30 + i * 26; g.beginPath(); g.arc(hip.x + tdx * t + 16 * Math.cos(L), hip.y + tdy * t + 16 * Math.sin(L), 2.6, 0, 7); g.fill(); }
-  // cou + tête
-  const hl = L + P.headTilt;
-  const hc = { x: sh.x + 50 * Math.sin(hl), y: sh.y - 50 * Math.cos(hl) };
-  limb([sh, { x: sh.x + 26 * Math.sin(hl), y: sh.y - 26 * Math.cos(hl) }], 22, COL.skinD);
-  g.save(); g.translate(hc.x, hc.y); g.rotate(hl);
-  g.fillStyle = COL.out; g.beginPath(); g.ellipse(0, 0, 37, 41, 0, 0, 7); g.fill();
-  g.fillStyle = COL.skin; g.beginPath(); g.ellipse(0, 0, 33, 37, 0, 0, 7); g.fill();
-  g.fillStyle = COL.hair; g.beginPath(); g.ellipse(-4, -18, 31, 20, -0.15, Math.PI, Math.PI * 2.05); g.fill();
-  g.fillRect(-35, -20, 12, 24);
-  g.fillStyle = COL.skinD; g.beginPath(); g.ellipse(-12, 3, 7, 10, 0, 0, 7); g.fill();
-  g.fillStyle = '#d9675a'; g.beginPath(); g.ellipse(34, 6, 9, 8, 0, 0, 7); g.fill();
-  g.fillStyle = 'rgba(214,92,80,.35)'; g.beginPath(); g.arc(16, 14, 9, 0, 7); g.fill();
-  g.strokeStyle = COL.out; g.lineWidth = 3.5;
-  const lid = P.eyeLid;
-  g.beginPath(); g.moveTo(10, -10 + lid * 2); g.lineTo(26, -8 + lid * 4); g.stroke();
-  g.fillStyle = COL.out; g.beginPath(); g.ellipse(19, -2, 3.5, 3.5 * (1 - lid * .7), 0, 0, 7); g.fill();
-  g.beginPath(); g.moveTo(14, 24); g.quadraticCurveTo(22, 20 + P.mouth * 6, 30, 23); g.stroke();
-  g.fillStyle = 'rgba(60,40,30,.18)'; g.beginPath(); g.ellipse(14, 22, 20, 12, 0, 0, 7); g.fill();
-  g.restore();
-  // bras avant
-  const FA = armPts(true);
-  limb([sh, FA.el, FA.hd], 24, COL.shirt);
-  g.fillStyle = COL.out; g.beginPath(); g.arc(FA.hd.x, FA.hd.y, 14, 0, 7); g.fill(); g.fillStyle = COL.skin; g.beginPath(); g.arc(FA.hd.x, FA.hd.y, 10, 0, 7); g.fill();
+    return { sh, el, sd };
+  });
+}
+function animateMan(P, t) {
+  const dr = S.drunk;
+  man.hips.position.y = 0.92 - P.crouch * 0.36 - 0.03 * P.walkAmt * Math.abs(Math.cos(P.phase));
+  for (const L of man.legs) {
+    const sd = L.sd, swing = sd * Math.sin(P.phase) * 0.55 * P.walkAmt;
+    L.hip.rotation.x = -(swing + P.legsFwd + P.crouch * 1.1);
+    L.hip.rotation.z = sd * P.spread * 0.45;
+    L.knee.rotation.x = Math.max(0, Math.sin(P.phase + (sd > 0 ? 0 : Math.PI) + 1.4)) * 0.9 * P.walkAmt + P.crouch * 1.9;
+  }
+  man.torso.rotation.x = P.lean + P.crouch * 0.45;
+  man.torso.rotation.z = 0.06 * dr * Math.sin(t * 1.3);
+  man.head.rotation.z = P.headTilt;
+  man.head.rotation.x = -0.1 + 0.12 * Math.sin(t * 0.8) * dr - P.lean * 0.4;
+  for (const A of man.arms) {
+    const sd = A.sd;
+    const fwd = -sd * Math.sin(P.phase) * 0.6 * P.walkAmt + P.armsUp * 2.5 * (sd > 0 ? 1 : 0.85);
+    A.sh.rotation.x = -fwd;
+    A.sh.rotation.z = sd * (0.1 + P.spread * 0.9 + 0.25 * P.armsUp);
+    A.el.rotation.x = -(0.3 + 0.4 * P.walkAmt);
+  }
 }
 
 const char = { p: new V3(), v: new V3(), up: new V3(0, 1, 0), upTarget: new V3(0, 1, 0), state: 'idle', timer: 0, theta: 0,
-  facing: 1, phase: 0, tumble: 0, contacts: [], snd: 0, deadT: 0, cause: '' };
+  facing: 1, phase: 0, tumble: 0, contacts: [], snd: 0, deadT: 0, cause: '', fwd: new V3(1, 0, 0), fwdVis: new V3(1, 0, 0) };
 
 // ───────────────────────── Entrée : capteur, calibrage, clavier ─────────────────────────
 const raw = new V3(0, -1, 0);         // gravité mesurée, repère écran, filtrée
@@ -375,13 +380,12 @@ let haveSensor = false, lastMotionT = 0, invVotes = 0, autoInv = false;
 let vRoll = 0, vPitch = 0;
 const keys = {};
 
-function screenAngle() { return (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0); }
 function onMotion(e) {
   const a = e.accelerationIncludingGravity; if (!a || a.x == null) return;
   haveSensor = true;
   let x = -a.x, y = -a.y, z = -a.z;
   if (autoInv !== !!S.invAll) { x = -x; y = -y; z = -z; }
-  const r = screenAngle() * DEG;
+  const r = (angle0 ?? screenAngle()) * DEG;
   const sx = x * Math.cos(r) - y * Math.sin(r), sy = x * Math.sin(r) + y * Math.cos(r);
   const v = new V3(S.invX ? -sx : sx, S.invY ? -sy : sy, z);
   if (v.lengthSq() < 1e-4) return; v.normalize();
@@ -467,7 +471,7 @@ function updateCamera(dt) {
   eye.lerp(new V3(0, 0, dist), 1 - S.fx3d);
   eye.z = Math.max(eye.z, 0.35 * dist);
   eyeS.lerp(eye, 1 - Math.exp(-dt / 0.2));
-  const aspect = innerWidth / innerHeight;
+  const aspect = gameW / gameH;
   let hw = V.hw, hh = V.hh;
   if (hw / hh < aspect) hw = hh * aspect; else hh = hw / aspect;
   camera.position.copy(V.center).addScaledVector(V.right, eyeS.x).addScaledVector(V.up, eyeS.y).addScaledVector(V.out, eyeS.z);
@@ -505,7 +509,7 @@ function resetRoom() {
   char.p.set(-3.5, hh - 0.001, 0.8); char.v.set(0, 0, 0); char.up.set(0, 1, 0); char.upTarget.set(0, 1, 0);
   char.state = 'idle'; char.timer = 0; char.tumble = 0; char.contacts = []; char.deadT = 0;
   for (const b of balls) { b.out = false; b.mesh.visible = true; b.p.fromArray(b.def.p); b.v.set(0, 0, 0); b.sleep = true; b.sleepRef.set(0, -1, 0); b.still = 0; b.mesh.quaternion.identity(); b.mesh.rotation.set(0.3, 1.1 * b.def.n, 0.2); }
-  manMesh.scale.set(0.5 * 1.75 * S.scale, 1.75 * S.scale, 1);
+  charGroup.scale.setScalar(S.scale); char.fwd.set(1, 0, 0); char.fwdVis.set(1, 0, 0);
   frontWall.visible = S.front === 'mur';
 }
 
@@ -700,7 +704,7 @@ const toastEl = document.getElementById('toast'); let toastT = 0;
 function toast(t) { toastEl.textContent = t; toastEl.style.opacity = '1'; clearTimeout(toastT); toastT = setTimeout(() => toastEl.style.opacity = '0', 1600); }
 
 const pose = { phase: 0, walkAmt: 0, lean: 0, crouch: 0, armsUp: 0, spread: 0, legsFwd: 0, headTilt: 0, eyeLid: .5, mouth: 0 };
-const _n = new V3(), _su = new V3(), _sr = new V3();
+const _su = new V3(), _sr = new V3();
 function updateVisuals(dt, t) {
   const c = char, { s, hh } = charDims(), dr = S.drunk;
   for (const b of balls) b.mesh.position.copy(b.p);
@@ -718,25 +722,24 @@ function updateVisuals(dt, t) {
   const k = 1 - Math.exp(-dt * 10);
   for (const key in tgt) pose[key] += (tgt[key] - pose[key]) * k;
   pose.eyeLid = c.state === 'dead' ? 1 : 0.45 + 0.25 * Math.sin(t * 0.7);
-  drawMan(mctx, pose); manTex.needsUpdate = true;
+  animateMan(pose, t);
 
-  // orientation du sprite : face caméra, « haut » = normale de son sol
+  // orientation : « haut » = normale de son sol, avant = sens de déplacement
   const feet = c.p.clone().addScaledVector(c.up, -hh);
   charGroup.position.copy(feet);
-  _n.copy(camera.position).sub(feet).normalize();
-  _su.copy(c.up).addScaledVector(_n, -c.up.dot(_n));
-  if (_su.lengthSq() < 0.04) _su.copy(view.up).addScaledVector(_n, -view.up.dot(_n));
-  _su.normalize();
-  _sr.crossVectors(_su, _n).normalize();
-  _m.makeBasis(_sr, _su, _n); charGroup.quaternion.setFromRotationMatrix(_m);
-  const f = c.v.dot(_sr);
-  if (c.state !== 'dead' && c.state !== 'fall') { if (f > 0.12 * s) c.facing = 1; else if (f < -0.12 * s) c.facing = -1; }
-  manMesh.scale.x = Math.abs(manMesh.scale.x) * c.facing;
+  if (sp > 0.15 * s && c.state !== 'fall' && c.state !== 'dead') c.fwd.copy(vt).normalize();
+  c.fwdVis.lerp(c.fwd, 1 - Math.exp(-dt * 8));
+  _sr.copy(c.fwdVis).addScaledVector(c.up, -c.fwdVis.dot(c.up));
+  if (_sr.lengthSq() < 1e-4) _sr.copy(Math.abs(c.up.z) < 0.9 ? AXV[2] : AXV[0]).addScaledVector(c.up, -(Math.abs(c.up.z) < 0.9 ? c.up.z : c.up.x));
+  _sr.normalize();
+  _su.crossVectors(c.up, _sr).normalize();
+  _m.makeBasis(_su, c.up, _sr); charGroup.quaternion.setFromRotationMatrix(_m);
   if (c.state === 'fall') c.tumble += dt * 3.2 * (c.tumbleDir || 1);
-  else if (c.state === 'dead') c.tumble += ((c.facing > 0 ? 1 : -1) * Math.PI / 2 - c.tumble) * (1 - Math.exp(-dt * 12));
+  else if (c.state === 'dead') c.tumble += (-Math.PI / 2 - c.tumble) * (1 - Math.exp(-dt * 12));
   else c.tumble *= Math.exp(-dt * 10);
-  manMesh.rotation.z = c.tumble + 0.05 * dr * Math.sin(t * 1.7) * (c.state === 'idle' || c.state === 'walk' ? 1 : 0);
-  manMesh.position.y = c.state === 'dead' ? 0.12 * s : 0;
+  charRoot.rotation.x = c.tumble;
+  charRoot.rotation.z = 0.05 * dr * Math.sin(t * 1.7) * (c.state === 'idle' || c.state === 'walk' ? 1 : 0);
+  charRoot.position.y = c.state === 'dead' ? 0.17 : 0;
 }
 
 // grain
@@ -789,7 +792,9 @@ document.getElementById('go').addEventListener('click', async () => {
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
   try { if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) await DeviceMotionEvent.requestPermission(); } catch (e) {}
   try { if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) await DeviceOrientationEvent.requestPermission(); } catch (e) {}
-  try { if (document.documentElement.requestFullscreen && matchMedia('(pointer: coarse)').matches) { await document.documentElement.requestFullscreen(); await screen.orientation?.lock?.('landscape'); } } catch (e) {}
+  try { if (document.documentElement.requestFullscreen && matchMedia('(pointer: coarse)').matches) await document.documentElement.requestFullscreen(); } catch (e) {}
+  try { await screen.orientation?.lock?.(screen.orientation.type); } catch (e) {}   // verrou natif (Android, plein écran)
+  angle0 = screenAngle(); onResize();                                              // sinon : contre-rotation du canvas
   try { await navigator.wakeLock?.request('screen'); } catch (e) {}
   document.getElementById('start').hidden = true;
   setTimeout(() => { if (!haveSensor) raw.copy(virtualRaw()); calibrate(); resetRoom(); running = true; }, 350);

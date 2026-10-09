@@ -2,7 +2,9 @@
 
 Prototype web qui valide une seule chose : déplacer un personnage ivre **uniquement en inclinant la tablette**, dans une salle qui réagit en 3D au mouvement.
 
-Une seule page (`index.html`), sans étape de compilation. Three.js est chargé depuis un CDN.
+Une seule page (`index.html`), sans étape de compilation. Three.js est chargé depuis un CDN. Le personnage est un modèle 3D articulé au rendu illustré.
+
+L'écran reste figé dans l'orientation du départ, même quand on retourne la tablette. Le verrou natif est utilisé quand il existe (Android, en plein écran). Sinon, la page contre-tourne l'image.
 
 ## Tester sur tablette
 
