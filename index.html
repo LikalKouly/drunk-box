@@ -40,12 +40,12 @@
   select { width: 100%; background: #1d130b; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; font: inherit; }
   #debug { position: fixed; left: calc(12px + env(safe-area-inset-left, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; white-space: pre; background: rgba(0,0,0,.5); padding: 8px 10px; border-radius: 8px; pointer-events: none; z-index: 4; }
-  #start { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 24px;
+  #start, #end { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 24px;
     background: radial-gradient(ellipse at center, rgba(30,18,8,.72), rgba(0,0,0,.92)); text-align: center; }
-  #start .card { max-width: 520px; display: grid; gap: 14px; justify-items: center; }
-  #start h1 { margin: 0; font-size: clamp(28px, 6vw, 46px); letter-spacing: .06em; font-weight: 800; color: var(--accent); }
-  #start p { margin: 0; color: var(--ink); opacity: .9; text-wrap: balance; }
-  #start small { color: var(--ink-dim); }
+  #start .card, #end .card { max-width: 520px; display: grid; gap: 14px; justify-items: center; }
+  #start h1, #end h1 { margin: 0; font-size: clamp(28px, 6vw, 46px); letter-spacing: .06em; font-weight: 800; color: var(--accent); }
+  #start p, #end p { margin: 0; color: var(--ink); opacity: .9; text-wrap: balance; }
+  #start small, #end small { color: var(--ink-dim); }
   #go { font-size: 18px; padding: 14px 34px; background: var(--accent); color: #1a0f05; border: 0; font-weight: 700; }
   #toast { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: rgba(20,12,6,.7);
     padding: 8px 14px; border-radius: 999px; font-size: 13px; opacity: 0; transition: opacity .4s; pointer-events: none; z-index: 4; }
@@ -67,6 +67,13 @@
 </div>
 <div id="panel" hidden></div>
 <div id="debug" hidden></div>
+<div id="end" hidden>
+  <div class="card">
+    <h1>FIN DU PROTOTYPE</h1>
+    <p id="endText"></p>
+    <button id="again" class="btn" style="font-size:18px;padding:14px 34px;background:var(--accent);color:#1a0f05;border:0;font-weight:700">Rejouer depuis le début</button>
+  </div>
+</div>
 <div id="start">
   <div class="card">
     <h1>DRUNK BOX</h1>
@@ -565,6 +572,14 @@ function resetRoom() {
   frontWall.visible = S.front === 'mur';
 }
 
+function showEnd() {
+  running = false; c_resetForEnd();
+  document.getElementById('endText').textContent =
+    `Vous avez terminé les ${ROOMS.length} salles de ce prototype (${ROOMS.map(r => r.name).join(', ')}). Les autres scènes viendront ensuite.`;
+  document.getElementById('end').hidden = false;
+}
+function c_resetForEnd() { char.state = 'idle'; char.deadT = 0; }
+
 function goRoom(i) {
   buildRoom(((i % ROOMS.length) + ROOMS.length) % ROOMS.length); resetRoom();
   toast(room.name);
@@ -751,7 +766,10 @@ function step(dt) {
   if (c.state === 'dead' || c.state === 'win') {
     c.deadT -= dt;
     if (c.state === 'dead' && c.deadT < 0.45 && fadeEl.style.opacity !== '1') showFade('');
-    if (c.deadT <= 0) { if (c.state === 'win') goRoom(level + 1); else resetRoom(); hideFade(); }
+    if (c.deadT <= 0) {
+      if (c.state === 'win' && level === ROOMS.length - 1) { showEnd(); return; }
+      if (c.state === 'win') goRoom(level + 1); else resetRoom(); hideFade();
+    }
   }
   simT += dt;
 }
@@ -862,6 +880,7 @@ document.getElementById('go').addEventListener('click', async () => {
   setTimeout(() => { if (!haveSensor) raw.copy(virtualRaw()); calibrate(); resetRoom(); running = true; }, 350);
 });
 document.getElementById('bRecal').addEventListener('click', () => { if (!haveSensor) { vRoll = 0; vPitch = 0; raw.copy(virtualRaw()); } calibrate(); });
+document.getElementById('again').addEventListener('click', () => { document.getElementById('end').hidden = true; goRoom(0); hideFade(); calibrate(); running = true; });
 document.getElementById('bReset').addEventListener('click', () => { resetRoom(); hideFade(); });
 document.getElementById('bSet').addEventListener('click', () => { panel.hidden = !panel.hidden; });
 </script>
