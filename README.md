@@ -24,7 +24,7 @@ Ouvrez ensuite `http://localhost:8765`. Les flèches ou un glisser de la souris 
 
 | Geste | Effet |
 | --- | --- |
-| Pencher à gauche ou à droite | Le personnage marche dans ce sens (au-delà de 25°, il glisse) |
+| Pencher à gauche ou à droite | Le personnage marche dans ce sens. Au-delà de 25°, la pente l'emporte : il court de plus en plus vite sans pouvoir s'arrêter |
 | Basculer le haut vers l'arrière ou vers soi | Il marche vers le fond ou vers l'avant |
 | Pencher fort (plus de 55°) | Il tombe sur le mur |
 | Retourner | Il tombe au plafond. Une chute trop rapide (plus de 8 m/s) le tue |
@@ -32,4 +32,4 @@ Ouvrez ensuite `http://localhost:8765`. Les flèches ou un glisser de la souris 
 
 ## Réglages en jeu (⚙)
 
-Les réglages couvrent la vue (face, plongée, trois-quarts, contre-plongée), la vitre avant (mur ou vide) et la taille du personnage. On peut aussi régler la zone morte, les angles de glissade et de chute, la vitesse, la gravité, les seuils de mort, l'ivresse, le lissage du capteur, la force de l'effet 3D et l'amplification latérale. Enfin, des cases permettent d'inverser les axes (si un appareil donne ses axes à l'envers), d'activer la vibration et d'afficher le débogage. Tous ces réglages sont gardés sur l'appareil.
+Les réglages couvrent la vue (face, plongée, trois-quarts, contre-plongée), la vitre avant (mur ou vide) et la taille du personnage. On peut aussi régler la zone morte, les angles d'emportement et de chute, la course max, la vitesse, la gravité, les seuils de mort, l'ivresse, le lissage du capteur, la force de l'effet 3D et l'amplification latérale. Enfin, des cases permettent d'inverser les axes (si un appareil donne ses axes à l'envers), d'activer la vibration et d'afficher le débogage. Tous ces réglages sont gardés sur l'appareil.

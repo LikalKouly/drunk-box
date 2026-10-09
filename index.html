@@ -84,7 +84,7 @@ const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // ───────────────────────── Réglages ─────────────────────────
 const DEFAULTS = { dead: 4, slide: 25, fall: 55, walk: 1.8, grav: 1, death: 8, crush: 6, drunk: 1, tau: 120,
-  fx3d: 1, lat: 0.6, scale: 1, view: 'face', front: 'mur', vibe: true, invAll: false, invX: false, invY: false, debug: false };
+  run: 5, fx3d: 1, lat: 0.6, scale: 1, view: 'face', front: 'mur', vibe: true, invAll: false, invX: false, invY: false, debug: false };
 const LS_KEY = 'drunkbox-proto-v1';
 function loadSettings() { try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(LS_KEY) || '{}') }; } catch (e) { return { ...DEFAULTS }; } }
 function saveSettings() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) {} }
@@ -93,7 +93,8 @@ let S = loadSettings();
 const SLIDERS = [
   ['Personnage'],
   ['dead', 'Zone morte', 0, 15, 0.5, '°'],
-  ['slide', 'Angle de glissade', 8, 60, 1, '°'],
+  ['slide', "Angle d'emportement", 8, 60, 1, '°'],
+  ['run', 'Course max emporté', 1.5, 9, 0.1, ' m/s'],
   ['fall', 'Angle de chute', 20, 85, 1, '°'],
   ['walk', 'Vitesse de marche', 0.3, 4, 0.1, ' m/s'],
   ['drunk', 'Ivresse', 0, 2, 0.05, ''],
@@ -537,9 +538,19 @@ function stepChar(dt) {
       const sp = S.walk * s * k * (1 + 0.3 * dr * Math.sin(t * 4.1) * Math.sin(t * 1.3 + 1));
       const dir = gt.clone().normalize().applyAxisAngle(N, 0.26 * dr * Math.sin(t * 0.9) * Math.sin(t * 0.37 + 2));
       desired.copy(dir).multiplyScalar(Math.max(0, sp));
-    } else c.state = 'slide';
-    if (c.state === 'slide') { vt.addScaledVector(gt, dt * 0.85); }
-    else vt.lerp(desired, 1 - Math.exp(-dt / 0.3));
+    } else {
+      // emporté par la pente : il court de plus en plus vite, sans pouvoir s'arrêter (jamais de glisse)
+      const k = clamp((theta - S.slide * DEG) / Math.max(1e-3, (S.fall - S.slide) * DEG), 0, 1);
+      const target = Math.max(S.walk * 1.2, S.run * (0.45 + 0.55 * k)) * s;
+      if (c.state !== 'carried' || !c.runSp) c.runSp = Math.max(vt.length(), S.walk * s);
+      c.runSp = Math.min(target, c.runSp + gt.length() * 0.5 * dt);
+      const sp = c.runSp;
+      const dir = gt.clone().normalize().applyAxisAngle(N, 0.18 * S.drunk * Math.sin(simT * 2.3));
+      desired.copy(dir).multiplyScalar(sp);
+      c.state = 'carried';
+    }
+    if (c.state !== 'carried') c.runSp = 0;
+    vt.lerp(desired, 1 - Math.exp(-dt / (c.state === 'carried' ? 0.12 : 0.3)));
     vn.addScaledVector(N, gn * dt);
     c.v.copy(vt).add(vn);
   } else {
@@ -699,7 +710,7 @@ function updateVisuals(dt, t) {
   switch (c.state) {
     case 'idle': tgt.lean = 0.07 * dr * Math.sin(t * 1.4); break;
     case 'walk': tgt.walkAmt = clamp(sp / (0.45 * s), 0, 1); pose.phase += dt * sp / (0.26 * s); tgt.lean = 0.1 * tgt.walkAmt + 0.08 * dr * Math.sin(t * 2.1); break;
-    case 'slide': tgt.lean = -0.35; tgt.armsUp = 0.85; tgt.legsFwd = 0.6; tgt.mouth = 1; break;
+    case 'carried': tgt.walkAmt = 1; pose.phase += dt * sp / (0.22 * s); tgt.lean = 0.32 + 0.06 * Math.sin(t * 9); tgt.armsUp = 0.45 + 0.35 * Math.sin(t * 11); tgt.spread = 0.15; tgt.mouth = 1; break;
     case 'fall': tgt.spread = 0.7; tgt.armsUp = 0.6; tgt.mouth = 1; break;
     case 'land': tgt.crouch = clamp(c.timer / 0.5, 0, 1); break;
     case 'dead': tgt.spread = 0.25; tgt.mouth = 1; break;
